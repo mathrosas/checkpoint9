@@ -1,3 +1,4 @@
+#include "attach_shelf/srv/go_to_loading.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "nav_msgs/msg/odometry.hpp"
 #include "rclcpp/rclcpp.hpp"
@@ -11,9 +12,10 @@ using namespace std::placeholders;
 
 class PreApproach : public rclcpp::Node {
 public:
-  PreApproach() : Node("pre_approach") {
+  PreApproach() : Node("pre_approach_v2") {
     this->declare_parameter("obstacle", 0.0);
     this->declare_parameter("degrees", 0);
+    this->declare_parameter("final_approach", false);
 
     getting_params();
 
@@ -29,12 +31,23 @@ public:
 
     timer_ = this->create_wall_timer(
         100ms, std::bind(&PreApproach::timer_callback, this));
+
+    client_ =
+        this->create_client<attach_shelf::srv::GoToLoading>("/approach_shelf");
+
+    while (!client_->wait_for_service(1s)) {
+      RCLCPP_INFO(this->get_logger(),
+                  "Waiting for service /approach_shelf to become available...");
+    }
+
+    RCLCPP_INFO(this->get_logger(), "Starting forward motion...");
   }
 
 private:
   void getting_params() {
     obstacle_ = this->get_parameter("obstacle").as_double();
     degrees_ = this->get_parameter("degrees").as_int();
+    final_approach_ = this->get_parameter("final_approach").as_bool();
   }
 
   int angle_to_index(const sensor_msgs::msg::LaserScan::SharedPtr &scan,
@@ -76,24 +89,21 @@ private:
         RCLCPP_INFO(this->get_logger(), "Obstacle at %.2f m. Stopping...",
                     front_laser_value_);
         cmd.linear.x = 0.0;
-        vel_pub_->publish(cmd);
         stopped_ = true;
         waiting_to_start_rotation_ = true;
         stop_time_ = this->now();
       } else {
         cmd.linear.x = 0.2;
-        vel_pub_->publish(cmd);
       }
+      vel_pub_->publish(cmd);
     } else if (waiting_to_start_rotation_) {
-      if ((this->now() - stop_time_).seconds() > 0.5) {
-        if (is_odom_received_) {
-          start_yaw_ = current_yaw_;
-          target_yaw_ = normalize_angle(start_yaw_ + degrees_ * M_PI / 180.0);
-          waiting_to_start_rotation_ = false;
-          RCLCPP_INFO(this->get_logger(),
-                      "Captured start_yaw=%.2f, target_yaw=%.2f", start_yaw_,
-                      target_yaw_);
-        }
+      if ((this->now() - stop_time_).seconds() > 0.5 && is_odom_received_) {
+        start_yaw_ = current_yaw_;
+        target_yaw_ = normalize_angle(start_yaw_ + degrees_ * M_PI / 180.0);
+        waiting_to_start_rotation_ = false;
+        RCLCPP_INFO(this->get_logger(),
+                    "Captured start_yaw=%.2f, target_yaw=%.2f", start_yaw_,
+                    target_yaw_);
       }
     } else if (!rotated_) {
       double angle_diff = normalize_angle(target_yaw_ - current_yaw_);
@@ -102,18 +112,40 @@ private:
       if (std::abs(angle_diff) < 0.15) {
         cmd.angular.z = 0.0;
         rotated_ = true;
-        RCLCPP_INFO(this->get_logger(), "Finished rotating %d degrees.",
-                    degrees_);
+        vel_pub_->publish(cmd);
+
+        // Now call the service
+        auto request =
+            std::make_shared<attach_shelf::srv::GoToLoading::Request>();
+        request->attach_to_shelf = final_approach_;
+
+        client_->async_send_request(request,
+                                    std::bind(&PreApproach::handle_response,
+                                              this, std::placeholders::_1));
       } else {
         cmd.angular.z = (angle_diff > 0) ? 0.5 : -0.5;
+        vel_pub_->publish(cmd);
       }
-      vel_pub_->publish(cmd);
     }
+  }
+
+  void handle_response(
+      const rclcpp::Client<attach_shelf::srv::GoToLoading>::SharedFuture
+          future) {
+    auto response = future.get();
+    if (response->complete) {
+      RCLCPP_INFO(this->get_logger(),
+                  "Two legs detected and final approach performed.");
+    } else {
+      RCLCPP_WARN(this->get_logger(), "Final approach not performed.");
+    }
+    rclcpp::shutdown();
   }
 
   // Parameters
   double obstacle_;
   int degrees_;
+  bool final_approach_;
   double front_laser_value_ = 10.0;
   double current_yaw_ = 0.0;
   double start_yaw_ = 0.0;
@@ -126,11 +158,12 @@ private:
   bool waiting_to_start_rotation_ = false;
   rclcpp::Time stop_time_;
 
-  // ROS interfaces
+  // ROS Interfaces
   rclcpp::Subscription<sensor_msgs::msg::LaserScan>::SharedPtr laser_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr odom_sub_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr vel_pub_;
   rclcpp::TimerBase::SharedPtr timer_;
+  rclcpp::Client<attach_shelf::srv::GoToLoading>::SharedPtr client_;
 };
 
 int main(int argc, char *argv[]) {
