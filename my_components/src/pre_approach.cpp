@@ -12,7 +12,6 @@ namespace my_components {
 
 PreApproach::PreApproach(const rclcpp::NodeOptions &options)
     : Node("pre_approach", options) {
-  /* declare + fetch parameters once                               */
 
   /* subscriptions                                                 */
   laser_sub_ = create_subscription<sensor_msgs::msg::LaserScan>(
@@ -31,7 +30,7 @@ PreApproach::PreApproach(const rclcpp::NodeOptions &options)
       create_wall_timer(100ms, std::bind(&PreApproach::timer_callback, this));
 }
 
-/* ---------- helpers ---------- */
+/* helpers */
 int PreApproach::angle_to_index(
     const sensor_msgs::msg::LaserScan::SharedPtr &scan,
     float desired_angle_deg) const {
@@ -111,7 +110,7 @@ void PreApproach::timer_callback() {
   }
 }
 
-/* ---------- register with pluginlib ---------- */
+/* register with pluginlib */
 } // namespace my_components
 
 RCLCPP_COMPONENTS_REGISTER_NODE(my_components::PreApproach)

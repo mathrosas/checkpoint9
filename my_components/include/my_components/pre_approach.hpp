@@ -1,5 +1,5 @@
-#ifndef MY_COMPONENTS__PRE_APPROACH_COMPONENT_HPP_
-#define MY_COMPONENTS__PRE_APPROACH_COMPONENT_HPP_
+#ifndef MY_COMPONENTS__PRE_APPROACH_HPP_
+#define MY_COMPONENTS__PRE_APPROACH_HPP_
 
 #include "geometry_msgs/msg/twist.hpp"
 #include "my_components/visibility_control.h"
@@ -50,4 +50,4 @@ private:
 
 } // namespace my_components
 
-#endif // MY_COMPONENTS__PRE_APPROACH_COMPONENT_HPP_
+#endif // MY_COMPONENTS__PRE_APPROACH_HPP_
