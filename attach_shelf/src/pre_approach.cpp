@@ -102,8 +102,10 @@ private:
       if (std::abs(angle_diff) < 0.15) {
         cmd.angular.z = 0.0;
         rotated_ = true;
+        timer_->cancel();
         RCLCPP_INFO(this->get_logger(), "Finished rotating %d degrees.",
                     degrees_);
+        rclcpp::shutdown();
       } else {
         cmd.angular.z = (angle_diff > 0) ? 0.5 : -0.5;
       }
