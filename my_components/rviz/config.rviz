@@ -5,10 +5,6 @@ Panels:
     Property Tree Widget:
       Expanded:
         - /Global Options1
-        - /Status1
-        - /RobotModel1
-        - /LaserScan1
-        - /TF1
       Splitter Ratio: 0.5
     Tree Height: 553
   - Class: rviz_common/Selection
@@ -267,25 +263,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 8.970006942749023
+      Distance: 12.602213859558105
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 4.876025199890137
-        Y: -2.828030824661255
-        Z: -2.2364985942840576
+        X: 2.488079071044922
+        Y: -1.5289992094039917
+        Z: -1.793833613395691
       Focal Shape Fixed Size: true
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.275397777557373
+      Pitch: 1.3197965621948242
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz)
-      Yaw: 1.4153971672058105
+      Yaw: 0.0003972230479121208
     Saved: ~
 Window Geometry:
   Displays:

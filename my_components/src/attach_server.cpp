@@ -22,8 +22,8 @@ AttachServer::AttachServer(const rclcpp::NodeOptions &options)
       "/scan", 10, std::bind(&AttachServer::laserCallback, this, _1));
 
   vel_pub_ = create_publisher<geometry_msgs::msg::Twist>(
-      "/diffbot_base_controller/cmd_vel_unstamped", 10);
-  elevator_pub_ = create_publisher<std_msgs::msg::String>("/elevator_up", 10);
+      "/diffbot_base_controller/cmd_vel_unstamped", 1);
+  elevator_pub_ = create_publisher<std_msgs::msg::String>("/elevator_up", 1);
 
   RCLCPP_INFO(get_logger(), "Approach shelf service (component) ready.");
 }
@@ -146,9 +146,9 @@ void AttachServer::approachCart() {
   const double yaw_err = std::atan2(y, x);
 
   geometry_msgs::msg::Twist cmd;
-  if (dist > 0.015) {
+  if (dist > 0.03) {
     cmd.linear.x = std::clamp(dist, 0.0, 0.3);
-    cmd.angular.z = -0.6 * yaw_err;
+    cmd.angular.z = -0.5 * yaw_err;
   } else {
     cmd.linear.x = cmd.angular.z = 0.0;
     approach_timer_->cancel();
@@ -160,7 +160,6 @@ void AttachServer::approachCart() {
     std_msgs::msg::String up_msg;
     up_msg.data = "up";
     elevator_pub_->publish(up_msg);
-    rclcpp::shutdown();
   }
   vel_pub_->publish(cmd);
 }
