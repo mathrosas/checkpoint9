@@ -1,6 +1,8 @@
-# Checkpoint 9 - Advanced ROS 2
+# Checkpoints 9 & 10 - Advanced ROS 2 / Node Composition
 
 Two C++ ROS 2 packages that make an **RB1 robot** autonomously approach and attach to a shelf in a warehouse simulation. The robot uses **laser intensity detection** to find the shelf's reflective legs, publishes a **TF2 `cart_frame`** at the midpoint between them, and drives underneath the shelf using proportional control before lifting it with the elevator.
+
+**Checkpoint 9** implements the behavior as standard ROS 2 nodes (`attach_shelf`). **Checkpoint 10** refactors the same logic into **composable components** (`my_components`) using `rclcpp_components`.
 
 Part of the [ROS & ROS 2 Developer Master Class](https://www.theconstructsim.com/) certification (Phase 2).
 
@@ -11,35 +13,39 @@ Part of the [ROS & ROS 2 Developer Master Class](https://www.theconstructsim.com
 ## How It Works
 
 <p align="center">
-  <img src="media/cart_frame.png" alt="RViz showing cart_frame TF published between the two shelf legs" width="550"/>
+  <img src="media/facing_shelf.png" alt="RB1 robot stopped facing the shelf after pre-approach" width="550"/>
 </p>
 
 ### Pre-Approach Phase
 
 1. Robot drives forward at 0.2 m/s toward the shelf
-2. Front laser reading drops below `obstacle` parameter threshold — robot stops
+2. Front laser reading drops below the `obstacle` parameter threshold — robot stops
 3. Waits 0.5 s for stabilization, captures current yaw from odometry
 4. Rotates by `degrees` parameter (odometry-based yaw tracking with angle normalization)
 
 ### Final Approach Phase
 
-1. `pre_approach_v2` calls the `/approach_shelf` service after rotation completes
+1. After rotation, the `/approach_shelf` service is called
 2. The service server scans laser intensities for two high-intensity blobs (> 1000) — the shelf's reflective leg markers
 3. Computes the midpoint between the two legs in the laser frame
 4. Transforms the midpoint to the `odom` frame using TF2 and publishes it as a static `cart_frame`
 5. Drives toward `cart_frame` with a +0.5 m offset (to position the robot under the shelf)
-6. Stops when within 1.5 cm of the target, publishes `"up"` to `/elevator_up` to lift the shelf
+6. Stops when within range of the target, publishes `"up"` to `/elevator_up` to lift the shelf
 
 ## Tasks Breakdown
 
-### Task 1 - Pre-Approach Node (`attach_shelf`, tag: `pre_approach`)
+This repo spans two checkpoints across two branches.
+
+### Checkpoint 9 - Standard Nodes (`attach_shelf` package, branch: `main`)
+
+#### Task 1 - Pre-Approach Node (branch: `task_1`)
 
 - Created `pre_approach.cpp` with ROS 2 parameters (`obstacle`, `degrees`)
 - Subscribes to `/scan` (front laser) and `/diffbot_base_controller/odom` (yaw)
 - State machine: forward drive → obstacle stop → rotation → shutdown
 - XML launch file `pre_approach.launch.xml` with configurable parameters
 
-### Task 2 - Service-Based Approach (`attach_shelf`, tag: `attach_to_shelf`)
+#### Task 2 - Service-Based Approach (branch: `task_2`)
 
 - Created `approach_service_server.cpp` implementing the `/approach_shelf` service
 - Laser intensity blob detection (threshold > 1000) to find two shelf legs
@@ -51,13 +57,23 @@ Part of the [ROS & ROS 2 Developer Master Class](https://www.theconstructsim.com
 - Python launch file `attach_to_shelf.launch.py` launching both nodes + RViz
 - Custom service: `GoToLoading.srv` (`bool attach_to_shelf` → `bool complete`)
 
-### Task 3 - ROS 2 Components (`my_components`)
+### Checkpoint 10 - Node Composition (`my_components` package, branch: `composition`)
 
-- Refactored all nodes as **composable components** (shared library plugins)
-- `PreApproach`, `AttachServer`, `AttachClient` registered with `RCLCPP_COMPONENTS_REGISTER_NODE`
-- `ComposableNodeContainer` launch file loads `PreApproach` + `AttachServer` into a single process
-- Manual composition executable (`manual_composition.cpp`) using `SingleThreadedExecutor`
+#### Task 1 - Compose the Nodes
+
+- Created `PreApproach` composable component replicating the pre-approach behavior
+- Hardcoded `obstacle` (0.3) and `degrees` (-90) instead of parameters
+- Registered with `RCLCPP_COMPONENTS_REGISTER_NODE` macro
+- Loadable at runtime: `ros2 component load /ComponentManager my_components my_components::PreApproach`
 - Header/source separation with `visibility_control.h` for DLL export macros
+
+#### Task 2 - Final Approach
+
+- Created `AttachServer` component (manual composition) containing the `/approach_shelf` service server
+- Created `AttachClient` component (runtime composition) containing the service client
+- Manual composition executable (`manual_composition.cpp`) using `SingleThreadedExecutor`
+- `ComposableNodeContainer` launch file (`attach_to_shelf.launch.py`) loads `PreApproach` + `AttachServer` into `my_container`
+- `AttachClient` loaded at runtime via `ros2 component load` to trigger the final approach
 
 ## ROS 2 Interface
 
@@ -74,7 +90,7 @@ Part of the [ROS & ROS 2 Developer Master Class](https://www.theconstructsim.com
 
 ```
 checkpoint9/
-├── attach_shelf/                    # Standard ROS 2 nodes
+├── attach_shelf/                    # Checkpoint 9: Standard ROS 2 nodes
 │   ├── CMakeLists.txt
 │   ├── package.xml
 │   ├── launch/
@@ -87,7 +103,7 @@ checkpoint9/
 │   │   └── approach_service_server.cpp    # Task 2: shelf detection + approach
 │   └── srv/
 │       └── GoToLoading.srv
-├── my_components/                   # ROS 2 composable nodes
+├── my_components/                   # Checkpoint 10: ROS 2 composable nodes
 │   ├── CMakeLists.txt
 │   ├── package.xml
 │   ├── include/my_components/
@@ -124,33 +140,42 @@ colcon build --packages-select attach_shelf my_components
 source install/setup.bash
 ```
 
-### Task 1 - Pre-Approach Only
+### Checkpoint 9 - Standard Nodes
 
 ```bash
-# Launch the RB1 simulation first, then:
+# Task 1 - Pre-Approach Only
 ros2 launch attach_shelf pre_approach.launch.xml obstacle:=0.3 degrees:=-90
-```
 
-### Task 2 - Full Shelf Attachment (Standard Nodes)
-
-```bash
+# Task 2 - Full Shelf Attachment
 ros2 launch attach_shelf attach_to_shelf.launch.py obstacle:=0.3 degrees:=-90 final_approach:=true
 ```
 
-### Task 3 - Full Shelf Attachment (Components)
+### Checkpoint 10 - Node Composition
 
 ```bash
+# Task 1 - Load PreApproach component at runtime
+ros2 run rclcpp_components component_container
+# In another terminal:
+ros2 component load /ComponentManager my_components my_components::PreApproach
+
+# Task 2 - Launch container with PreApproach + AttachServer
 ros2 launch my_components attach_to_shelf.launch.py
+# In another terminal, load the client to trigger the final approach:
+ros2 component load /my_container my_components my_components::AttachClient
 ```
 
-## Git Tags
+## Git Branches
 
-| Tag | Description |
-|---|---|
-| `pre_approach` | Pre-approach node with parameterized drive and rotation |
-| `attach_to_shelf` | Service-based final approach with TF2, laser intensity detection, and elevator lift |
+| Branch | Checkpoint | Description |
+|---|---|---|
+| `main` | 9 + 10 | All code merged (default) |
+| `task_1` | 9 | Pre-approach node with parameterized drive and rotation |
+| `task_2` | 9 | Service-based final approach with TF2 and elevator lift |
+| `composition` | 10 | Composable nodes: PreApproach, AttachServer, AttachClient |
 
 ## Key Concepts Covered
+
+### Checkpoint 9
 
 - **Laser intensity detection**: finding reflective markers via `intensities[]` blob analysis
 - **TF2 static broadcasting**: publishing `cart_frame` at runtime from computed coordinates
@@ -158,8 +183,15 @@ ros2 launch my_components attach_to_shelf.launch.py
 - **ROS 2 services**: custom `GoToLoading.srv` for decoupled approach triggering
 - **ROS 2 parameters**: runtime-configurable `obstacle`, `degrees`, `final_approach`
 - **State machines**: sequential phases (drive → stop → rotate → service call → approach → lift)
-- **ROS 2 composition**: `rclcpp_components` shared libraries, `ComposableNodeContainer`, manual composition
-- **Proportional control**: distance/yaw-based velocity commands with clamping
+
+### Checkpoint 10
+
+- **ROS 2 composition**: `rclcpp_components` shared libraries loaded into a single process
+- **Runtime composition**: `ros2 component load` to dynamically add nodes to a running container
+- **Manual composition**: `SingleThreadedExecutor` with explicitly instantiated component nodes
+- **ComposableNodeContainer**: launch file that pre-loads components into a container
+- **Visibility control**: `COMPOSITION_PUBLIC` / `COMPOSITION_LOCAL` DLL export macros
+- **Header/source separation**: proper component class design with `.hpp` headers
 
 ## Technologies
 
